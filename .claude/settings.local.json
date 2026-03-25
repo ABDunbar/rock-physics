@@ -3,7 +3,9 @@
     "allow": [
       "Bash(python3:*)",
       "Bash(ls:*)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:rockphypy.readthedocs.io)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }
