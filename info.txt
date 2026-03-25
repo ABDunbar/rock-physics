@@ -1,0 +1,30 @@
+
+Reservoir information for North Sea Oil Field.
+*************************************************
+The field to be investigated is located in the South Viking Graben in the North Sea. It is of Palaeocene age, and represents turbidite sand deposits. The sands were eroded off the Scottish Mainland and East Shetland Platform, and transported to the "deep-sea" between Scottland and Norway, into the graben basins of the North Sea. 
+
+The sediments are today buried at a depth of ca. 2200m in the area of study. Still they are loosly consolidated sediments. Moreover, the episodes of sand deposition were separated by longer periods of high-stand shale deposition. Hence, the lithology variation can be complex and variable both vertically as well as laterally in these systems. 
+
+Hydrocarbons were encountered in well #2 and well #5 in these sands, often referred to as the Heimdal Formation sands. In well #2, the Top Heimdal is located at a depth of 2153m. The OWC (oil-water contact) in this well is at 2183m. Hence, the oil coloumn is 30m. 
+
+We will not (yet) inform you about the depth location of reservoir sands in the other wells, except that you will have to focus on the depth zone of ca. 2100m - 2300m in all wells. 
+
+****** STEP 1:  Hints *******
+
+When you start recognizing clusters of data, we recommend you to use well 2 as a type well/reference well to create a database of training-data. This is because of all the direct information available here, including cores and thin-sections, and helium porosity and permeability measurements. Well #2 and #5 are the only wells with shear wave information (Vs). If you choose to use Vs as a parameter in your classification, you should calculate empirical values of Vs (based on Vp) in the other wells, before you do classification. Talk to Isao, Mario, Per or Tapan for further information about this. The Gamma ray log is a very good clay indicator in the North Sea. So Vp and gamma ray together will work well in order to classify lithologies in the area. NB! Remember to normalize your gamma ray values to be within the range observed in the type-well. ALternatively, you can calculate empirically clay content from gamma ray values using the formula:
+
+		clay content (%) = (GRmax - GRlog)/(GRmax - GRmin).
+
+This assumes a linear relationship between clay content and gamma ray. This is not necessarily true. If you want you can use other empirical relations that exist in the literature. Clay content can also be calculated from density-neutron porosity relations, and this can be done in well 2, and the gamma ray method can be controlled/calibrated. The P-wave velocity log should be very reliable in all the wells available. However, keep in mind that the P-wave velocity log can read the velocity of mud-filtrate invaded zones of a hydrocarbon reservoir. It would be most reasonable to define your training data in a zone where we know we have brine, so this invasion effect would be negligible. However, usually reservoir zones are only cored when oil is encountered so this is a catch22. But by knowing what lithology we have from cores, we can check the invasion effect by using rock diagnostics. 
+Finally, the density log is available in all the wells, and can be used in the classification procedure. Keep in mind that the density logging tool is a very mechanical device, and is very sensitive to rough bore hole surfaces. This is why we have to provide you with a corrected density log in well 2. It turns out that the cap rock is a silty shale with thinly laminated beds that cause reading errors. This effect has not been corrected for in other wells, and therefore there the density log values are not always reliable. In practice, one would check the caliper log to identify zones where the density tool is reliable or not. Unfortunately, we do not have caliper logs available. However, the density tool is needed because we want to calculate acoustic impedances (AI) later, where AI=Vp*density. Also porosity can be directly related to density (rho) by the following formula:
+
+		porosity=(rho_matrix- rho_log)/(rho_matrix - rho_fluid)
+
+For input parameters see the file info.par.
+
+
+
+
+
+
+

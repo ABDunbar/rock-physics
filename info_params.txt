@@ -1,0 +1,32 @@
+Parameters and rock properties that you need in your North Sea term-project
+****************************************************************************
+
+
+	Effective pressure at reservoir depth = ca. 20 MPa
+	(or you can calculate: p_eff=rho_ma*9.8*depth - rho_fluid*9.8*depth)
+	Assuming hydrostatic pressure.
+
+	Temperature at reservoir depth = 77.2 degrees Celcius. 
+
+	Fluid properties:
+
+		brine density: 1.09 g/cm3
+		brine bulk modulus: 2.8 GPa
+
+		oil density 0.78 g/cm3
+		oil gravity: 32 API
+		GOR:	64
+
+	Rock properties:
+
+		quartz mineral bulk modulus:  36.8 GPa
+		quartz mineral shear modulus: 44 GPa
+
+		clay bulk modulus: 	15 GPa
+		clay shear modulus:	5 GPa
+
+	You will need to calculate the fluid bulk modulus of oil before you do pore fluid substitution. This can be done on a the package Petrotools or using srbtools on Matlab. We will show you how to do that later. 
+
+	Mineral moduli will also be needed in Gassmann modeling. Furthermore 
+they will be needed in Rock diagnostics. 
+

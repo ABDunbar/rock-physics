@@ -1,0 +1,4 @@
+
+The file cdps_line2.sgy are already nmo corrected cdp-gathers. Well #2
+correspond to cdp # 2232. 
+
