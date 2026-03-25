@@ -283,15 +283,20 @@ def apply_fluid_substitution(well, coeffs, K_fl_new, RHO_fl_new, suffix):
     """
     Generic Gassmann forward substitution: brine → any target fluid.
 
-    Conditions dry rock on the fitted polynomial trend, then performs
-    forward Gassmann substitution.  Adds columns:
-      Ksat_{suffix}, rho_{suffix}, Vp_{suffix}, Vs_{suffix},
-      PR_{suffix}, AI_{suffix}
+    Simm's adaptive conditioning strategy:
+      - Clean Sand & Cemented Sand: use raw inverted Kd/K0 (reference facies)
+      - Silty Sand 1 & 2: use conditioned trend (intermediate lithologies)
+      - Shales: use raw inverted Kd/K0 (too different from sand trend; keep inversion)
     """
     w = well.copy()
 
-    # Conditioned dry bulk modulus (trend value, clipped to physical range)
-    w['Kd_K0_c'] = np.polyval(coeffs, w['phi']).clip(0.05, 0.99)
+    # Selective conditioning: apply trend only to silty sands
+    conditioned_facies = ['Silty Sand 1', 'Silty Sand 2']
+    # For conditioned facies: use trend; for all others: use raw Kd/K0
+    w['Kd_K0_c'] = w['Kd_K0'].where(
+        ~w['facies'].isin(conditioned_facies),
+        np.polyval(coeffs, w['phi']).clip(0.05, 0.99)
+    )
 
     # Forward substitution: brine → new fluid
     w[f'Ksat_{suffix}'] = gassmann_fwd(w['Kd_K0_c'], w['K0'], K_fl_new, w['phi'])
@@ -307,6 +312,37 @@ def apply_fluid_substitution(well, coeffs, K_fl_new, RHO_fl_new, suffix):
     # Post-substitution Poisson's ratio and AI
     w[f'PR_{suffix}']   = poisson(w[f'Vp_{suffix}'], w[f'Vs_{suffix}'])
     w[f'AI_{suffix}']   = w[f'rho_{suffix}'] * w[f'Vp_{suffix}']
+
+    return w
+
+
+def apply_default_fluid_substitution(well, K_fl_new, RHO_fl_new, suffix):
+    """
+    Default Gassmann forward substitution using raw inverted Kd/K0 (no conditioning).
+
+    This represents the "existing solution" — standard Gassmann without
+    adaptive dry-rock trend fitting. Adds columns:
+      Ksat_default_{suffix}, rho_default_{suffix}, Vp_default_{suffix}, etc.
+    """
+    w = well.copy()
+
+    # Use raw inverted Kd/K0 (clipped to physical range for stability)
+    w['Kd_K0_raw'] = w['Kd_K0'].clip(0.05, 0.99)
+
+    # Forward substitution: brine → new fluid using raw Kd
+    w[f'Ksat_default_{suffix}'] = gassmann_fwd(w['Kd_K0_raw'], w['K0'], K_fl_new, w['phi'])
+
+    # Updated density
+    w[f'rho_default_{suffix}']  = w['rho'] - w['phi'] * RHO_BR + w['phi'] * RHO_fl_new
+
+    # New velocities
+    w[f'Vp_default_{suffix}']   = np.sqrt(
+        (w[f'Ksat_default_{suffix}'] + (4.0/3.0)*w['mu']) / w[f'rho_default_{suffix}'])
+    w[f'Vs_default_{suffix}']   = np.sqrt(w['mu'] / w[f'rho_default_{suffix}'])
+
+    # Post-substitution Poisson's ratio and AI
+    w[f'PR_default_{suffix}']   = poisson(w[f'Vp_default_{suffix}'], w[f'Vs_default_{suffix}'])
+    w[f'AI_default_{suffix}']   = w[f'rho_default_{suffix}'] * w[f'Vp_default_{suffix}']
 
     return w
 
@@ -351,23 +387,24 @@ def _add_reservoir_markers(axes, depth_col):
 # ── Figure 1: Multi-track log display ─────────────────────────────────────────
 
 def fig_well_logs(w):
-    fig = plt.figure(figsize=(20, 13))
-    gs  = GridSpec(1, 7, figure=fig, wspace=0.06,
-                   left=0.06, right=0.97, top=0.88, bottom=0.10)
+    fig = plt.figure(figsize=(22, 13))
+    gs  = GridSpec(1, 8, figure=fig, wspace=0.06,
+                   left=0.04, right=0.97, top=0.88, bottom=0.10)
 
     depth = w['depth']
 
     def new_ax(col, sharey=None):
         return fig.add_subplot(gs[0, col], sharey=sharey)
 
-    ax0 = new_ax(0)
-    ax1 = new_ax(1, ax0)
-    ax2 = new_ax(2, ax0)
-    ax3 = new_ax(3, ax0)
-    ax4 = new_ax(4, ax0)
-    ax5 = new_ax(5, ax0)
-    ax6 = new_ax(6, ax0)
-    axes = [ax0, ax1, ax2, ax3, ax4, ax5, ax6]
+    ax_depth = new_ax(0)  # Depth scale track
+    ax0 = new_ax(1, ax_depth)
+    ax1 = new_ax(2, ax_depth)
+    ax2 = new_ax(3, ax_depth)
+    ax3 = new_ax(4, ax_depth)
+    ax4 = new_ax(5, ax_depth)
+    ax5 = new_ax(6, ax_depth)
+    ax6 = new_ax(7, ax_depth)
+    axes = [ax_depth, ax0, ax1, ax2, ax3, ax4, ax5, ax6]
 
     for ax in axes:
         ax.invert_yaxis()
@@ -381,18 +418,26 @@ def fig_well_logs(w):
 
     # ── Reservoir horizon markers ─────────────────────────────────────────────
     _add_reservoir_markers(axes, depth)
-    # Annotate on the leftmost track (ax0)
-    xlim = ax0.get_xlim()
-    ax0.text(xlim[1] * 0.98, TOP_HEIMDAL - 3, 'Top Heimdal',
-             va='bottom', ha='right', fontsize=6, color='#2CA02C', style='italic')
-    ax0.text(xlim[1] * 0.98, OWC_DEPTH - 3, 'OWC',
-             va='bottom', ha='right', fontsize=6, color='#1F77B4', style='italic')
+    # Annotate on the depth scale track
+    xlim = ax_depth.get_xlim()
+    ax_depth.text(xlim[1] * 0.5, TOP_HEIMDAL - 3, 'Top Heimdal',
+             va='bottom', ha='center', fontsize=6, color='#2CA02C', style='italic')
+    ax_depth.text(xlim[1] * 0.5, OWC_DEPTH - 3, 'OWC',
+             va='bottom', ha='center', fontsize=6, color='#1F77B4', style='italic')
+
+    # Track -1: Depth scale (ruler)
+    ax_depth.plot([], [], 'k-', lw=0.8)  # dummy line for consistency
+    ax_depth.set_xlim(-0.5, 0.5)
+    ax_depth.set_xticks([])
+    ax_depth.set_ylabel('Depth (m)', fontsize=9, fontweight='bold')
+    # Add depth value labels on the depth track
+    for d in np.arange(depth.min(), depth.max() + 50, 50):
+        ax_depth.text(0, d, f'{d:.0f}', ha='center', va='center', fontsize=6)
 
     # Track 0: GR
     ax0.plot(w['GR'], depth, 'k-', lw=0.6)
     ax0.set_xlim(0, 150)
     ax0.set_xlabel('GR\n(GAPI)', fontsize=8)
-    ax0.set_ylabel('Depth (m)', fontsize=9)
 
     # Track 1: Vsh
     ax1.fill_betweenx(depth, 0, w['Vsh'], color='sienna', alpha=0.5)
@@ -413,28 +458,34 @@ def fig_well_logs(w):
 
     # Track 4: Vp  (brine=blue solid, oil=green dashed, gas=red dotted)
     ax4.plot(w['Vp'],     depth, 'b-',  lw=1.0,  label='Brine')
-    ax4.plot(w['Vp_oil'], depth, color='#2CA02C', ls='--', lw=1.0, label='Oil',  alpha=0.85)
-    ax4.plot(w['Vp_gas'], depth, 'r:',  lw=1.2,  label='Gas',  alpha=0.85)
+    ax4.plot(w['Vp_oil'], depth, color='#2CA02C', ls='--', lw=1.0, label='Oil (Simm)',  alpha=0.85)
+    ax4.plot(w['Vp_gas'], depth, 'r:',  lw=1.2,  label='Gas (Simm)',  alpha=0.85)
+    ax4.plot(w['Vp_default_oil'], depth, color='#FF4500', ls='-.', lw=1.0, label='Oil (Default)', alpha=0.7)
+    ax4.plot(w['Vp_default_gas'], depth, color='#8B0000', ls='-.', lw=1.2, label='Gas (Default)', alpha=0.7)
     ax4.set_xlim(1.2, 4.5)
     ax4.set_xlabel('Vp\n(km/s)', fontsize=8)
-    ax4.legend(fontsize=6, loc='lower right')
+    ax4.legend(fontsize=5, loc='lower right', ncol=2)
 
     # Track 5: Vs  (brine=blue solid, oil=green dashed, gas=red dotted)
     ax5.plot(w['Vs'],     depth, 'b-',  lw=1.0,  label='Brine')
-    ax5.plot(w['Vs_oil'], depth, color='#2CA02C', ls='--', lw=1.0, label='Oil',  alpha=0.85)
-    ax5.plot(w['Vs_gas'], depth, 'r:',  lw=1.2,  label='Gas',  alpha=0.85)
+    ax5.plot(w['Vs_oil'], depth, color='#2CA02C', ls='--', lw=1.0, label='Oil (Simm)',  alpha=0.85)
+    ax5.plot(w['Vs_gas'], depth, 'r:',  lw=1.2,  label='Gas (Simm)',  alpha=0.85)
+    ax5.plot(w['Vs_default_oil'], depth, color='#FF4500', ls='-.', lw=1.0, label='Oil (Default)', alpha=0.7)
+    ax5.plot(w['Vs_default_gas'], depth, color='#8B0000', ls='-.', lw=1.2, label='Gas (Default)', alpha=0.7)
     ax5.set_xlim(0.4, 2.5)
     ax5.set_xlabel('Vs\n(km/s)', fontsize=8)
-    ax5.legend(fontsize=6, loc='lower right')
+    ax5.legend(fontsize=5, loc='lower right', ncol=2)
 
     # Track 6: Poisson's ratio  (brine=blue solid, oil=green dashed, gas=red dotted)
     ax6.plot(w['PR'],     depth, 'b-',  lw=1.0,  label='Brine')
-    ax6.plot(w['PR_oil'], depth, color='#2CA02C', ls='--', lw=1.0, label='Oil',  alpha=0.85)
-    ax6.plot(w['PR_gas'], depth, 'r:',  lw=1.2,  label='Gas',  alpha=0.85)
+    ax6.plot(w['PR_oil'], depth, color='#2CA02C', ls='--', lw=1.0, label='Oil (Simm)',  alpha=0.85)
+    ax6.plot(w['PR_gas'], depth, 'r:',  lw=1.2,  label='Gas (Simm)',  alpha=0.85)
+    ax6.plot(w['PR_default_oil'], depth, color='#FF4500', ls='-.', lw=1.0, label='Oil (Default)', alpha=0.7)
+    ax6.plot(w['PR_default_gas'], depth, color='#8B0000', ls='-.', lw=1.2, label='Gas (Default)', alpha=0.7)
     ax6.axvline(0.33, color='gray', ls=':', lw=0.8)
     ax6.set_xlim(0.0, 0.50)
     ax6.set_xlabel("Poisson's\nratio", fontsize=8)
-    ax6.legend(fontsize=6, loc='lower right')
+    ax6.legend(fontsize=5, loc='lower right', ncol=2)
 
     # Facies legend
     patches = [mpatches.Patch(color=c, alpha=0.7, label=f)
@@ -449,8 +500,140 @@ def fig_well_logs(w):
 
     fig.suptitle(
         'Well 2 — Glitne Field, Norway  (Heimdal Formation)\n'
-        'Multi-Track Log Display: Brine (blue solid)  ·  Oil (green dashed)'
-        '  ·  Gas-Substituted (red dotted)',
+        'Multi-Track Log Display: Brine (blue solid)  ·  Oil (green/red)  ·  Gas (red/brown)\n'
+        'Simm (solid/dashed) vs Default (dash-dot) Fluid Substitutions',
+        fontsize=11, fontweight='bold')
+    return fig
+
+
+# ── Figure 1b: Multi-track log display (zoomed to upper facies section) ────────
+
+def fig_well_logs_zoomed(w):
+    """Zoomed version showing 2120-2320m depth range."""
+    fig = plt.figure(figsize=(22, 13))
+    gs  = GridSpec(1, 8, figure=fig, wspace=0.06,
+                   left=0.04, right=0.97, top=0.88, bottom=0.10)
+
+    depth = w['depth']
+    depth_min = 2120.0
+    depth_max = 2320.0
+    
+    # Zoom to this range
+    zoom_mask = (depth >= depth_min) & (depth <= depth_max)
+    w_zoom = w[zoom_mask].copy()
+    depth_zoom = depth[zoom_mask]
+
+    def new_ax(col, sharey=None):
+        return fig.add_subplot(gs[0, col], sharey=sharey)
+
+    ax_depth = new_ax(0)  # Depth scale track
+    ax0 = new_ax(1, ax_depth)
+    ax1 = new_ax(2, ax_depth)
+    ax2 = new_ax(3, ax_depth)
+    ax3 = new_ax(4, ax_depth)
+    ax4 = new_ax(5, ax_depth)
+    ax5 = new_ax(6, ax_depth)
+    ax6 = new_ax(7, ax_depth)
+    axes = [ax_depth, ax0, ax1, ax2, ax3, ax4, ax5, ax6]
+
+    for ax in axes:
+        ax.invert_yaxis()
+        ax.set_ylim(depth_max + 2, depth_min - 2)
+        ax.tick_params(labelsize=7)
+        ax.grid(axis='x', color='#CCCCCC', lw=0.4)
+        _shade_facies(ax, w_zoom)
+
+    for ax in axes[1:]:
+        ax.set_yticks([])
+
+    # ── Reservoir horizon markers ─────────────────────────────────────────────
+    _add_reservoir_markers(axes, depth)
+    # Annotate on the depth scale track
+    xlim = ax_depth.get_xlim()
+    if TOP_HEIMDAL >= depth_min and TOP_HEIMDAL <= depth_max:
+        ax_depth.text(xlim[1] * 0.5, TOP_HEIMDAL - 1.5, 'Top Heimdal',
+                 va='bottom', ha='center', fontsize=6, color='#2CA02C', style='italic')
+    if OWC_DEPTH >= depth_min and OWC_DEPTH <= depth_max:
+        ax_depth.text(xlim[1] * 0.5, OWC_DEPTH - 1.5, 'OWC',
+                 va='bottom', ha='center', fontsize=6, color='#1F77B4', style='italic')
+
+    # Track -1: Depth scale (ruler)
+    ax_depth.plot([], [], 'k-', lw=0.8)  # dummy line for consistency
+    ax_depth.set_xlim(-0.5, 0.5)
+    ax_depth.set_xticks([])
+    ax_depth.set_ylabel('Depth (m)', fontsize=9, fontweight='bold')
+    # Add depth value labels on the depth track (10m intervals for this range)
+    for d in np.arange(depth_min, depth_max + 10, 10):
+        ax_depth.text(0, d, f'{d:.0f}', ha='center', va='center', fontsize=6)
+
+    # Track 0: GR
+    ax0.plot(w_zoom['GR'], depth_zoom, 'k-', lw=0.6)
+    ax0.set_xlim(0, 150)
+    ax0.set_xlabel('GR\n(GAPI)', fontsize=8)
+
+    # Track 1: Vsh
+    ax1.fill_betweenx(depth_zoom, 0, w_zoom['Vsh'], color='sienna', alpha=0.5)
+    ax1.plot(w_zoom['Vsh'], depth_zoom, color='sienna', lw=0.6)
+    ax1.set_xlim(0, 1)
+    ax1.set_xlabel('Vsh\n(v/v)', fontsize=8)
+
+    # Track 2: Effective porosity
+    ax2.fill_betweenx(depth_zoom, 0, w_zoom['phi'], color='teal', alpha=0.4)
+    ax2.plot(w_zoom['phi'], depth_zoom, color='teal', lw=0.6)
+    ax2.set_xlim(0, 0.50)
+    ax2.set_xlabel('φ_e\n(v/v)', fontsize=8)
+
+    # Track 3: Density
+    ax3.plot(w_zoom['rho'], depth_zoom, color='#8B0000', lw=0.8)
+    ax3.set_xlim(1.8, 2.8)
+    ax3.set_xlabel('ρ\n(g/cc)', fontsize=8)
+
+    # Track 4: Vp
+    ax4.plot(w_zoom['Vp'],     depth_zoom, 'b-',  lw=1.0,  label='Brine')
+    ax4.plot(w_zoom['Vp_oil'], depth_zoom, color='#2CA02C', ls='--', lw=1.0, label='Oil (Simm)',  alpha=0.85)
+    ax4.plot(w_zoom['Vp_gas'], depth_zoom, 'r:',  lw=1.2,  label='Gas (Simm)',  alpha=0.85)
+    ax4.plot(w_zoom['Vp_default_oil'], depth_zoom, color='#FF4500', ls='-.', lw=1.0, label='Oil (Default)', alpha=0.7)
+    ax4.plot(w_zoom['Vp_default_gas'], depth_zoom, color='#8B0000', ls='-.', lw=1.2, label='Gas (Default)', alpha=0.7)
+    ax4.set_xlim(1.2, 4.5)
+    ax4.set_xlabel('Vp\n(km/s)', fontsize=8)
+    ax4.legend(fontsize=5, loc='lower right', ncol=2)
+
+    # Track 5: Vs
+    ax5.plot(w_zoom['Vs'],     depth_zoom, 'b-',  lw=1.0,  label='Brine')
+    ax5.plot(w_zoom['Vs_oil'], depth_zoom, color='#2CA02C', ls='--', lw=1.0, label='Oil (Simm)',  alpha=0.85)
+    ax5.plot(w_zoom['Vs_gas'], depth_zoom, 'r:',  lw=1.2,  label='Gas (Simm)',  alpha=0.85)
+    ax5.plot(w_zoom['Vs_default_oil'], depth_zoom, color='#FF4500', ls='-.', lw=1.0, label='Oil (Default)', alpha=0.7)
+    ax5.plot(w_zoom['Vs_default_gas'], depth_zoom, color='#8B0000', ls='-.', lw=1.2, label='Gas (Default)', alpha=0.7)
+    ax5.set_xlim(0.4, 2.5)
+    ax5.set_xlabel('Vs\n(km/s)', fontsize=8)
+    ax5.legend(fontsize=5, loc='lower right', ncol=2)
+
+    # Track 6: Poisson's ratio
+    ax6.plot(w_zoom['PR'],     depth_zoom, 'b-',  lw=1.0,  label='Brine')
+    ax6.plot(w_zoom['PR_oil'], depth_zoom, color='#2CA02C', ls='--', lw=1.0, label='Oil (Simm)',  alpha=0.85)
+    ax6.plot(w_zoom['PR_gas'], depth_zoom, 'r:',  lw=1.2,  label='Gas (Simm)',  alpha=0.85)
+    ax6.plot(w_zoom['PR_default_oil'], depth_zoom, color='#FF4500', ls='-.', lw=1.0, label='Oil (Default)', alpha=0.7)
+    ax6.plot(w_zoom['PR_default_gas'], depth_zoom, color='#8B0000', ls='-.', lw=1.2, label='Gas (Default)', alpha=0.7)
+    ax6.axvline(0.33, color='gray', ls=':', lw=0.8)
+    ax6.set_xlim(0.0, 0.50)
+    ax6.set_xlabel("Poisson's\nratio", fontsize=8)
+    ax6.legend(fontsize=5, loc='lower right', ncol=2)
+
+    # Facies legend
+    patches = [mpatches.Patch(color=c, alpha=0.7, label=f)
+               for f, c in FACIES_COLORS.items() if f != 'Background']
+    # Reservoir horizon legend entries
+    patches += [
+        mpatches.Patch(color='#2CA02C', alpha=0.8, label='Top Heimdal'),
+        mpatches.Patch(color='#1F77B4', alpha=0.8, label='OWC'),
+    ]
+    fig.legend(handles=patches, loc='lower center', ncol=len(patches),
+               fontsize=7, title='Facies / Horizons', bbox_to_anchor=(0.52, 0.01))
+
+    fig.suptitle(
+        'Well 2 — Glitne Field, Norway  (Heimdal Formation)  [ZOOMED: 2120–2320 m]\n'
+        'Multi-Track Log Display: Brine (blue solid)  ·  Oil (green/red)  ·  Gas (red/brown)\n'
+        'Simm (solid/dashed) vs Default (dash-dot) Fluid Substitutions',
         fontsize=11, fontweight='bold')
     return fig
 
@@ -667,6 +850,120 @@ def fig_fluid_sensitivity(w):
     return fig
 
 
+# ── Figure 5: Facies comparison — default vs Simm fluid substitution ────────
+
+def fig_facies_comparison(w):
+    """
+    Compare default (raw Kd) vs Simm (conditioned) fluid substitutions
+    across facies. Shows Vp profiles for brine, default oil/gas, Simm oil/gas.
+    """
+    facies_list = ['Clean Sand', 'Cemented Sand', 'Silty Sand 1', 'Silty Sand 2', 'Silty Shale']
+    fig, axes = plt.subplots(len(facies_list), 1, figsize=(12, 15), sharex=True)
+    if len(facies_list) == 1:
+        axes = [axes]
+
+    depth = w['depth']
+
+    for i, fac in enumerate(facies_list):
+        ax = axes[i]
+        mask = w['facies'] == fac
+        if not mask.any():
+            ax.text(0.5, 0.5, f'No data for {fac}', ha='center', va='center', transform=ax.transAxes)
+            continue
+
+        # Shade facies background
+        _shade_facies(ax, w[mask])
+
+        # Plot Vp profiles
+        ax.plot(w.loc[mask, 'Vp'],                depth[mask], 'b-',  lw=1.5, label='Brine')
+        ax.plot(w.loc[mask, 'Vp_default_oil'],    depth[mask], 'r--', lw=1.2, label='Default Oil')
+        ax.plot(w.loc[mask, 'Vp_oil'],            depth[mask], 'g-',  lw=1.2, label='Simm Oil')
+        ax.plot(w.loc[mask, 'Vp_default_gas'],    depth[mask], 'm:',  lw=1.2, label='Default Gas')
+        ax.plot(w.loc[mask, 'Vp_gas'],            depth[mask], 'c-',  lw=1.2, label='Simm Gas')
+
+        ax.set_ylim(depth[mask].max() + 2, depth[mask].min() - 2)
+        ax.set_ylabel('Depth (m)', fontsize=9)
+        ax.set_title(f'{fac} — Vp Fluid Substitution Comparison', fontsize=11, fontweight='bold')
+        ax.grid(axis='x', alpha=0.3)
+        ax.legend(fontsize=8, loc='lower right')
+
+    axes[-1].set_xlabel('Vp (km/s)', fontsize=10)
+    fig.suptitle(
+        'Facies-Specific Fluid Substitution: Default (Raw Kd) vs Simm (Conditioned Trend)\n'
+        'Brine (blue) → Oil (red/green) and Gas (magenta/cyan)',
+        fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    return fig
+
+
+# ── Figure 6: Default vs Simm substitution differences ──────────────────────
+
+def fig_default_vs_simm_differences(w):
+    """
+    Crossplot showing differences between default and Simm fluid substitutions.
+    Highlights where conditioning the dry rock matters most.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    ax1, ax2, ax3, ax4 = axes.flatten()
+
+    labelled = w[w['facies'] != 'Background']
+
+    # (a) ΔVp_oil (default - Simm) vs porosity
+    for fac, grp in labelled.groupby('facies'):
+        delta_vp_oil = grp['Vp_default_oil'] - grp['Vp_oil']
+        ax1.scatter(grp['phi'], delta_vp_oil, c=FACIES_COLORS[fac],
+                    s=15, alpha=0.7, edgecolors='none', label=fac)
+    ax1.axhline(0, color='black', ls='--', alpha=0.5)
+    ax1.set_xlabel('Effective Porosity φ_e', fontsize=10)
+    ax1.set_ylabel('ΔVp Oil (Default - Simm)  (km/s)', fontsize=10)
+    ax1.set_title('(a)  Oil Substitution Difference vs Porosity', fontsize=11)
+    ax1.legend(fontsize=7, markerscale=1.5, ncol=2)
+    ax1.grid(True, alpha=0.25)
+
+    # (b) ΔVp_gas (default - Simm) vs porosity
+    for fac, grp in labelled.groupby('facies'):
+        delta_vp_gas = grp['Vp_default_gas'] - grp['Vp_gas']
+        ax2.scatter(grp['phi'], delta_vp_gas, c=FACIES_COLORS[fac],
+                    s=15, alpha=0.7, edgecolors='none', label=fac)
+    ax2.axhline(0, color='black', ls='--', alpha=0.5)
+    ax2.set_xlabel('Effective Porosity φ_e', fontsize=10)
+    ax2.set_ylabel('ΔVp Gas (Default - Simm)  (km/s)', fontsize=10)
+    ax2.set_title('(b)  Gas Substitution Difference vs Porosity', fontsize=11)
+    ax2.legend(fontsize=7, markerscale=1.5, ncol=2)
+    ax2.grid(True, alpha=0.25)
+
+    # (c) ΔVp_oil vs Vsh (shale volume)
+    for fac, grp in labelled.groupby('facies'):
+        delta_vp_oil = grp['Vp_default_oil'] - grp['Vp_oil']
+        ax3.scatter(grp['Vsh'], delta_vp_oil, c=FACIES_COLORS[fac],
+                    s=15, alpha=0.7, edgecolors='none', label=fac)
+    ax3.axhline(0, color='black', ls='--', alpha=0.5)
+    ax3.set_xlabel('Vsh  (v/v)', fontsize=10)
+    ax3.set_ylabel('ΔVp Oil (Default - Simm)  (km/s)', fontsize=10)
+    ax3.set_title('(c)  Oil Substitution Difference vs Shale Volume', fontsize=11)
+    ax3.legend(fontsize=7, markerscale=1.5, ncol=2)
+    ax3.grid(True, alpha=0.25)
+
+    # (d) ΔPR_oil (default - Simm) vs porosity
+    for fac, grp in labelled.groupby('facies'):
+        delta_pr_oil = grp['PR_default_oil'] - grp['PR_oil']
+        ax4.scatter(grp['phi'], delta_pr_oil, c=FACIES_COLORS[fac],
+                    s=15, alpha=0.7, edgecolors='none', label=fac)
+    ax4.axhline(0, color='black', ls='--', alpha=0.5)
+    ax4.set_xlabel('Effective Porosity φ_e', fontsize=10)
+    ax4.set_ylabel('ΔPR Oil (Default - Simm)', fontsize=10)
+    ax4.set_title('(d)  Poisson Ratio Difference vs Porosity', fontsize=11)
+    ax4.legend(fontsize=7, markerscale=1.5, ncol=2)
+    ax4.grid(True, alpha=0.25)
+
+    fig.suptitle(
+        'Impact of Dry Rock Conditioning: Default vs Simm Fluid Substitution Differences\n'
+        'Positive Δ = Default predicts higher values than Simm',
+        fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    return fig
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
@@ -720,11 +1017,19 @@ def main():
     print("\n[4] Fitting conditioned dry-rock trend …")
     coeffs = fit_dry_rock_trend(well)
     print(f"    Kd/K0 = {coeffs[0]:.3f}·φ² + {coeffs[1]:.3f}·φ + {coeffs[2]:.3f}")
+    print("    Conditioning applied selectively:")
+    print("      • Clean Sand & Cemented Sand: raw Kd/K0 (reference facies)")
+    print("      • Silty Sand 1 & 2: conditioned trend (Simm's adaptive method)")
+    print("      • Shales: raw Kd/K0 (keep stratum-specific inversion)")
 
     # ── Fluid substitutions ────────────────────────────────────────────────────
     print("[5] Applying fluid substitutions …")
     well = apply_fluid_substitution(well, coeffs, K_OIL,  RHO_OIL,  suffix='oil')
     well = apply_fluid_substitution(well, coeffs, K_GAS,  RHO_GAS,  suffix='gas')
+
+    # Default substitutions (using raw Kd/K0)
+    well = apply_default_fluid_substitution(well, K_OIL, RHO_OIL, suffix='oil')
+    well = apply_default_fluid_substitution(well, K_GAS, RHO_GAS, suffix='gas')
 
     # Refresh sand mask after new columns are added
     sand = well[well['facies'].isin(['Clean Sand', 'Cemented Sand',
@@ -741,13 +1046,29 @@ def main():
     print(f"    Mean ΔPR  oil (sand): {mean_dpr_oil:.3f}")
     print(f"    Mean ΔPR  gas (sand): {mean_dpr_gas:.3f}")
 
+    # ── Summarize differences between default and Simm substitutions ──────────
+    print("\n[5b] Default vs Simm substitution differences (by facies) …")
+    facies_list = ['Clean Sand', 'Cemented Sand', 'Silty Sand 1', 'Silty Sand 2', 'Silty Shale']
+    for fac in facies_list:
+        grp = well[well['facies'] == fac]
+        if len(grp) == 0:
+            continue
+        delta_vp_oil = (grp['Vp_default_oil'] - grp['Vp_oil']).mean()
+        delta_vp_gas = (grp['Vp_default_gas'] - grp['Vp_gas']).mean()
+        delta_pr_oil = (grp['PR_default_oil'] - grp['PR_oil']).mean()
+        print(f"    {fac}: ΔVp_oil={delta_vp_oil:.3f}, ΔVp_gas={delta_vp_gas:.3f}, "
+              f"ΔPR_oil={delta_pr_oil:.3f} km/s")
+
     # ── Figures ────────────────────────────────────────────────────────────────
     print("\n[6] Generating figures …")
     figs = [
         (fig_well_logs(well),         'fig1_well_logs.png'),
+        (fig_well_logs_zoomed(well),  'fig1b_well_logs_zoomed.png'),
         (fig_kd_k0(well, coeffs),     'fig2_kd_k0_template.png'),
         (fig_crossplots(well),        'fig3_crossplots.png'),
         (fig_fluid_sensitivity(well), 'fig4_fluid_sensitivity.png'),
+        (fig_facies_comparison(well), 'fig5_facies_comparison.png'),
+        (fig_default_vs_simm_differences(well), 'fig6_differences.png'),
     ]
     for fig, fname in figs:
         path = os.path.join(DATA_DIR, fname)
