@@ -15,7 +15,7 @@ Parameters and rock properties that you need in your North Sea term-project
 
 		oil density 0.78 g/cm3
 		oil gravity: 32 API
-		GOR:	64
+		GOR:	64 sm3/sm3
 
 	Rock properties:
 
