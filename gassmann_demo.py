@@ -242,9 +242,9 @@ def compute_rock_physics(well):
     w['Kd_K0'] = gassmann_inv(w['Ksat'], w['K0'], K_BR, w['phi'])
     w['Kd']    = w['Kd_K0'] * w['K0']
 
-    # Normalised pore stiffness  Kφ/K0 = (Kd/K0) / (1 − Kd/K0)
+    # Normalised pore stiffness  Kφ/K0 = φ·(Kd/K0) / (1 − Kd/K0)   [Simm 2007 Eq. 6]
     denom = (1.0 - w['Kd_K0']).where(lambda x: x.abs() > 1e-4, other=np.nan)
-    w['Kphi_K0'] = w['Kd_K0'] / denom
+    w['Kphi_K0'] = w['phi'] * w['Kd_K0'] / denom
 
     # ── Derived quantities ────────────────────────────────────────────────────
     w['PR']   = poisson(w['Vp'], w['Vs'])
@@ -650,11 +650,11 @@ def fig_kd_k0(w, coeffs):
 
     phi_r = np.linspace(0.01, 0.50, 300)
 
-    # ── Kφ/K0 contours ────────────────────────────────────────────────────────
+    # ── Kφ/K0 contours: Kd/K0 = c/(c+φ)  [Simm 2007 Eq. 6; converge at φ=0, Kd/K0=1]
     for c in [0.1, 0.2, 0.3, 0.4, 0.5]:
-        kd_k0_c = c / (1.0 + c)               # Kd/K0 for this Kφ/K0
-        ax.axhline(kd_k0_c, color='#888888', ls='--', lw=0.9, alpha=0.7)
-        ax.text(0.505, kd_k0_c + 0.007,
+        kd_k0_c = c / (c + phi_r)
+        ax.plot(phi_r, kd_k0_c, color='#888888', ls='--', lw=0.9, alpha=0.7)
+        ax.text(0.505, c / (c + 0.50) + 0.007,
                 f'Kφ/K₀ = {c:.1f}', fontsize=8, color='#555555', va='bottom')
 
     # ── Scatter (facies-coloured) ─────────────────────────────────────────────
@@ -757,8 +757,9 @@ def fig_crossplots(w):
                      c=valid['Vsh'], cmap='RdYlGn_r',
                      vmin=0, vmax=1, s=10, alpha=0.65, edgecolors='none')
     plt.colorbar(sc, ax=ax4, label='Vsh  (v/v)', shrink=0.85)
+    phi_r4 = np.linspace(0.001, 0.52, 300)
     for c in [0.1, 0.2, 0.3, 0.4, 0.5]:
-        ax4.axhline(c/(1+c), color='gray', ls='--', lw=0.7, alpha=0.6)
+        ax4.plot(phi_r4, c/(c + phi_r4), color='gray', ls='--', lw=0.7, alpha=0.6)
     ax4.axhline(0.0, color='black', lw=0.8, ls=':')
     ax4.set_xlim(-0.01, 0.52)
     ax4.set_ylim(-0.35, 1.05)
