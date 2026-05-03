@@ -11,3 +11,8 @@ dependencies = [
     "pandas>=3.0.1",
     "rockphypy>=0.0.2",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+]
