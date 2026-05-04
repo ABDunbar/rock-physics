@@ -30,6 +30,7 @@ REQUIRED_DATA_FILES = (
     "data/well_2.las",
     "rockphys/config.py",
     "rockphys/pipeline.py",
+    "scripts/run_simm_workflow.py",
 )
 
 FACIES_FILES = (

@@ -27,6 +27,21 @@ uv run pytest -q
 uv run python scripts/check_inputs.py
 ```
 
+To run the importable workflow from the terminal:
+
+```bash
+uv run python scripts/run_simm_workflow.py --data-dir data
+```
+
+To regenerate the standard figure set into a separate directory:
+
+```bash
+uv run python scripts/run_simm_workflow.py \
+  --data-dir data \
+  --output-dir outputs/simm_demo \
+  --write-figures
+```
+
 ## Notebook/API Usage
 
 Use the importable pipeline when you want the Simm workflow results without

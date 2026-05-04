@@ -10,6 +10,7 @@ def test_manifest_captures_demo_data_and_outputs():
     assert "gassmann_demo.ipynb" in check_inputs.REQUIRED_DATA_FILES
     assert "rockphys/config.py" in check_inputs.REQUIRED_DATA_FILES
     assert "rockphys/pipeline.py" in check_inputs.REQUIRED_DATA_FILES
+    assert "scripts/run_simm_workflow.py" in check_inputs.REQUIRED_DATA_FILES
     assert "data/well_2.txt" in check_inputs.REQUIRED_DATA_FILES
     assert "data/well2_clnSand.txt" in check_inputs.FACIES_FILES
     assert "fig2_kd_k0_template.png" in check_inputs.EXPECTED_FIGURES
