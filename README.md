@@ -56,6 +56,24 @@ result = run_simm_workflow(config)
 result.figure_paths
 ```
 
+You can also override the scientific configuration without editing module
+constants:
+
+```python
+from rockphys import DryRockTrendConfig, FluidProperties, SimmWorkflowConfig, run_simm_workflow
+
+config = SimmWorkflowConfig(
+    gas_fluid=FluidProperties(bulk_modulus_gpa=0.10, density_g_cm3=0.30),
+    dry_rock_trend=DryRockTrendConfig(
+        conditioned_facies=("Silty Sand 1", "Silty Sand 2"),
+    ),
+)
+
+result = run_simm_workflow(config)
+```
+
+The defaults preserve the current notebook behavior.
+
 ## Relationship To shaley-gassmann
 
 `shaley-gassmann` overlaps with this repo around dry bulk modulus conditioning

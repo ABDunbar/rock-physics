@@ -28,6 +28,7 @@ REQUIRED_DATA_FILES = (
     "data/info_cdp.txt",
     "data/well_2.txt",
     "data/well_2.las",
+    "rockphys/config.py",
     "rockphys/pipeline.py",
 )
 

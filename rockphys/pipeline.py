@@ -7,14 +7,14 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from .constants import (
-    K_GAS,
-    OIL_API,
-    OIL_GOR,
-    RESERVOIR_P,
-    RESERVOIR_TEMP,
-    RHO_GAS,
-    RHO_OIL,
+from .config import (
+    DEFAULT_DRY_ROCK_TREND,
+    DEFAULT_RESERVOIR,
+    GAS_FLUID,
+    OIL_FLUID,
+    DryRockTrendConfig,
+    FluidProperties,
+    ReservoirProperties,
 )
 from .io import assign_facies, load_facies, load_well
 from .physics import batzle_wang_oil, compute_rock_physics
@@ -50,6 +50,10 @@ class SimmWorkflowConfig:
     data_dir: Path = Path("data")
     output_dir: Path | None = None
     write_figures: bool = False
+    reservoir: ReservoirProperties = DEFAULT_RESERVOIR
+    oil_fluid: FluidProperties = OIL_FLUID
+    gas_fluid: FluidProperties = GAS_FLUID
+    dry_rock_trend: DryRockTrendConfig = DEFAULT_DRY_ROCK_TREND
 
 
 @dataclass(frozen=True)
@@ -65,8 +69,17 @@ DEFAULT_CONFIG = SimmWorkflowConfig()
 
 
 def _compute_oil_bulk_modulus() -> float:
-    _, _, vp_oil_mps = batzle_wang_oil(RESERVOIR_TEMP, RESERVOIR_P, OIL_API, OIL_GOR)
-    return RHO_OIL * (vp_oil_mps / 1000.0) ** 2
+    return _compute_oil_bulk_modulus_for(DEFAULT_CONFIG)
+
+
+def _compute_oil_bulk_modulus_for(config: SimmWorkflowConfig) -> float:
+    _, _, vp_oil_mps = batzle_wang_oil(
+        config.reservoir.temperature_c,
+        config.reservoir.pressure_mpa,
+        config.reservoir.oil_api,
+        config.reservoir.oil_gor_sm3,
+    )
+    return config.oil_fluid.density_g_cm3 * (vp_oil_mps / 1000.0) ** 2
 
 
 def _write_figures(well, coeffs, output_dir: Path) -> dict[str, Path]:
@@ -88,13 +101,37 @@ def run_simm_workflow(config: SimmWorkflowConfig = DEFAULT_CONFIG) -> SimmWorkfl
     well = assign_facies(well, load_facies(data_dir))
     well = compute_rock_physics(well)
 
-    coeffs = fit_dry_rock_trend(well)
-    k_oil = _compute_oil_bulk_modulus()
+    coeffs = fit_dry_rock_trend(well, config.dry_rock_trend)
+    k_oil = _compute_oil_bulk_modulus_for(config)
 
-    well = apply_fluid_substitution(well, coeffs, k_oil, RHO_OIL, suffix="oil")
-    well = apply_fluid_substitution(well, coeffs, K_GAS, RHO_GAS, suffix="gas")
-    well = apply_default_fluid_substitution(well, k_oil, RHO_OIL, suffix="oil")
-    well = apply_default_fluid_substitution(well, K_GAS, RHO_GAS, suffix="gas")
+    well = apply_fluid_substitution(
+        well,
+        coeffs,
+        k_oil,
+        config.oil_fluid.density_g_cm3,
+        suffix="oil",
+        config=config.dry_rock_trend,
+    )
+    well = apply_fluid_substitution(
+        well,
+        coeffs,
+        config.gas_fluid.bulk_modulus_gpa,
+        config.gas_fluid.density_g_cm3,
+        suffix="gas",
+        config=config.dry_rock_trend,
+    )
+    well = apply_default_fluid_substitution(
+        well,
+        k_oil,
+        config.oil_fluid.density_g_cm3,
+        suffix="oil",
+    )
+    well = apply_default_fluid_substitution(
+        well,
+        config.gas_fluid.bulk_modulus_gpa,
+        config.gas_fluid.density_g_cm3,
+        suffix="gas",
+    )
 
     figure_paths = {}
     if config.write_figures:
@@ -105,6 +142,6 @@ def run_simm_workflow(config: SimmWorkflowConfig = DEFAULT_CONFIG) -> SimmWorkfl
         well=well,
         coeffs=coeffs,
         oil_bulk_modulus_gpa=k_oil,
-        oil_density_g_cm3=RHO_OIL,
+        oil_density_g_cm3=config.oil_fluid.density_g_cm3,
         figure_paths=figure_paths,
     )
