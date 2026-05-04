@@ -25,6 +25,7 @@ matplotlib.use('Agg')          # non-interactive backend (saves without display)
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
+from rockphys.pipeline import SimmWorkflowConfig, run_simm_workflow
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MINERAL AND FLUID PROPERTIES  (Simm 2007 + info_params.txt updates)
@@ -969,115 +970,37 @@ def fig_default_vs_simm_differences(w):
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main():
-    DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+def main(data_dir=None, output_dir=None):
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = data_dir or os.path.join(repo_dir, "data")
+    output_dir = output_dir or repo_dir
 
     print("=" * 60)
     print("  Gassmann Fluid Substitution Demo  (Simm 2007)")
     print("  Glitne Field, WELL-2 — Brine / Oil / Gas scenarios")
     print("=" * 60)
 
-    # ── Batzle-Wang oil modulus ────────────────────────────────────────────────
-    print("\n[0] Computing oil properties (Batzle-Wang 1992) …")
-    K_OIL_bw, rho_oil_bw, Vp_oil_mps = batzle_wang_oil(
-        RESERVOIR_TEMP, RESERVOIR_P, OIL_API, OIL_GOR)
-    # Use the given density (0.78 g/cc) for K_oil because B-W live density
-    # differs significantly from the measured reservoir value (high-GOR case).
-    K_OIL = RHO_OIL * (Vp_oil_mps / 1000.0)**2
-    print(f"    B-W live density:     {rho_oil_bw:.3f} g/cc  "
-          f"(given: {RHO_OIL:.2f} g/cc)")
-    print(f"    B-W live velocity:    {Vp_oil_mps:.0f} m/s")
-    print(f"    K_oil (Batzle-Wang):  {K_OIL:.3f} GPa  "
-          f"[= {RHO_OIL:.2f} × ({Vp_oil_mps/1000:.3f})²]")
+    result = run_simm_workflow(
+        SimmWorkflowConfig(
+            data_dir=data_dir,
+            output_dir=output_dir,
+            write_figures=True,
+        )
+    )
+    well = result.well
+    sand = well[well['facies'].isin(['Clean Sand', 'Cemented Sand', 'Silty Sand 1', 'Silty Sand 2'])]
 
-    # ── Load ───────────────────────────────────────────────────────────────────
-    print("\n[1] Loading well data …")
-    well = load_well(DATA_DIR)
-    print(f"    {len(well)} samples, depth {well['depth'].min():.0f}–"
-          f"{well['depth'].max():.0f} m")
-
-    print("[2] Assigning facies …")
-    facies_depths = load_facies(DATA_DIR)
-    well = assign_facies(well, facies_depths)
-    print(well['facies'].value_counts().to_string(header=False))
-
-    # ── Rock physics ───────────────────────────────────────────────────────────
-    print("\n[3] Computing rock physics …")
-    well = compute_rock_physics(well)
-
-    sand = well[well['facies'].isin(['Clean Sand', 'Cemented Sand',
-                                      'Silty Sand 1', 'Silty Sand 2'])]
-    print(f"    Porosity range (all):  {well['phi'].min():.3f} – "
-          f"{well['phi'].max():.3f}")
-    print(f"    Kd/K0  P5–P95:  "
-          f"{well['Kd_K0'].quantile(0.05):.3f} – "
-          f"{well['Kd_K0'].quantile(0.95):.3f}  "
-          f"(negative values expected in shaly/low-φ zones)")
-
-    # ── Dry rock trend ─────────────────────────────────────────────────────────
-    print("\n[4] Fitting conditioned dry-rock trend …")
-    coeffs = fit_dry_rock_trend(well)
-    print(f"    Kd/K0 = {coeffs[0]:.3f}·φ² + {coeffs[1]:.3f}·φ + {coeffs[2]:.3f}")
-    print("    Conditioning applied selectively:")
-    print("      • Clean Sand & Cemented Sand: raw Kd/K0 (reference facies)")
-    print("      • Silty Sand 1 & 2: conditioned trend (Simm's adaptive method)")
-    print("      • Shales: raw Kd/K0 (keep stratum-specific inversion)")
-
-    # ── Fluid substitutions ────────────────────────────────────────────────────
-    print("[5] Applying fluid substitutions …")
-    well = apply_fluid_substitution(well, coeffs, K_OIL,  RHO_OIL,  suffix='oil')
-    well = apply_fluid_substitution(well, coeffs, K_GAS,  RHO_GAS,  suffix='gas')
-
-    # Default substitutions (using raw Kd/K0)
-    well = apply_default_fluid_substitution(well, K_OIL, RHO_OIL, suffix='oil')
-    well = apply_default_fluid_substitution(well, K_GAS, RHO_GAS, suffix='gas')
-
-    # Refresh sand mask after new columns are added
-    sand = well[well['facies'].isin(['Clean Sand', 'Cemented Sand',
-                                      'Silty Sand 1', 'Silty Sand 2'])]
-    mean_dvp_oil = (sand['Vp_oil'] - sand['Vp']).mean()
-    mean_dvp_gas = (sand['Vp_gas'] - sand['Vp']).mean()
-    mean_dpr_oil = (sand['PR_oil'] - sand['PR']).mean()
-    mean_dpr_gas = (sand['PR_gas'] - sand['PR']).mean()
-
-    print(f"    K_oil (Batzle-Wang):  {K_OIL:.3f} GPa")
-    print(f"    ρ_oil (given):        {RHO_OIL:.2f} g/cc")
-    print(f"    Mean ΔVp oil (sand):  {mean_dvp_oil:.3f} km/s")
-    print(f"    Mean ΔVp gas (sand):  {mean_dvp_gas:.3f} km/s")
-    print(f"    Mean ΔPR  oil (sand): {mean_dpr_oil:.3f}")
-    print(f"    Mean ΔPR  gas (sand): {mean_dpr_gas:.3f}")
-
-    # ── Summarize differences between default and Simm substitutions ──────────
-    print("\n[5b] Default vs Simm substitution differences (by facies) …")
-    facies_list = ['Clean Sand', 'Cemented Sand', 'Silty Sand 1', 'Silty Sand 2', 'Silty Shale']
-    for fac in facies_list:
-        grp = well[well['facies'] == fac]
-        if len(grp) == 0:
-            continue
-        delta_vp_oil = (grp['Vp_default_oil'] - grp['Vp_oil']).mean()
-        delta_vp_gas = (grp['Vp_default_gas'] - grp['Vp_gas']).mean()
-        delta_pr_oil = (grp['PR_default_oil'] - grp['PR_oil']).mean()
-        print(f"    {fac}: ΔVp_oil={delta_vp_oil:.3f}, ΔVp_gas={delta_vp_gas:.3f}, "
-              f"ΔPR_oil={delta_pr_oil:.3f} km/s")
-
-    # ── Figures ────────────────────────────────────────────────────────────────
-    print("\n[6] Generating figures …")
-    figs = [
-        (fig_well_logs(well),         'fig1_well_logs.png'),
-        (fig_well_logs_zoomed(well),  'fig1b_well_logs_zoomed.png'),
-        (fig_kd_k0(well, coeffs),     'fig2_kd_k0_template.png'),
-        (fig_crossplots(well),        'fig3_crossplots.png'),
-        (fig_fluid_sensitivity(well), 'fig4_fluid_sensitivity.png'),
-        (fig_facies_comparison(well), 'fig5_facies_comparison.png'),
-        (fig_default_vs_simm_differences(well), 'fig6_differences.png'),
-    ]
-    for fig, fname in figs:
-        path = os.path.join(DATA_DIR, fname)
-        fig.savefig(path, dpi=150, bbox_inches='tight')
-        plt.close(fig)
+    print(f"\nrows={len(well)}, facies_samples={(well['facies'] != 'Background').sum()}")
+    print(f"coeffs={result.coeffs[0]:.3f},{result.coeffs[1]:.3f},{result.coeffs[2]:.1f}")
+    print(f"k_oil={result.oil_bulk_modulus_gpa:.3f} GPa")
+    print(f"Mean ΔVp oil (sand): {(sand['Vp_oil'] - sand['Vp']).mean():.3f} km/s")
+    print(f"Mean ΔVp gas (sand): {(sand['Vp_gas'] - sand['Vp']).mean():.3f} km/s")
+    print(f"figures={len(result.figure_paths)}")
+    for path in result.figure_paths.values():
         print(f"    Saved → {path}")
 
     print("\nDone.  Open the PNG files in the rock-physics directory.")
+    return result
 
 
 if __name__ == '__main__':
