@@ -10,6 +10,8 @@ API/config/CLI patterns, not as a replacement for this scientific notebook.
 ## Contents
 
 - `gassmann_demo.ipynb`: narrative notebook following the Simm paper.
+- `notebooks/01_simm_workflow_pipeline.ipynb`: compact notebook using the
+  importable pipeline API.
 - `gassmann_demo.py`: script version of the notebook workflow.
 - `rockphys/`: reusable helpers for loading data, computing rock physics,
   applying default/Simm substitutions, plotting, and running the workflow.

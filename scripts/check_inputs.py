@@ -23,6 +23,7 @@ REQUIRED_DATA_FILES = (
     "README.md",
     "gassmann_demo.ipynb",
     "gassmann_demo.py",
+    "notebooks/01_simm_workflow_pipeline.ipynb",
     "data/info.txt",
     "data/info_params.txt",
     "data/info_cdp.txt",
