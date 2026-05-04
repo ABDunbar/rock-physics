@@ -20,11 +20,15 @@ if str(ROOT) not in sys.path:
 
 
 REQUIRED_DATA_FILES = (
+    "README.md",
+    "gassmann_demo.ipynb",
+    "gassmann_demo.py",
     "data/info.txt",
     "data/info_params.txt",
     "data/info_cdp.txt",
     "data/well_2.txt",
     "data/well_2.las",
+    "rockphys/pipeline.py",
 )
 
 FACIES_FILES = (
@@ -118,23 +122,11 @@ def _check_depth_table(
 
 def _check_rock_physics_smoke() -> CheckResult:
     try:
-        from rockphys.constants import K_GAS, RHO_GAS
-        from rockphys.io import assign_facies, load_facies, load_well
-        from rockphys.physics import compute_rock_physics
-        from rockphys.substitution import (
-            apply_default_fluid_substitution,
-            apply_fluid_substitution,
-            fit_dry_rock_trend,
-        )
+        from rockphys.pipeline import SimmWorkflowConfig, run_simm_workflow
 
         with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            well = load_well(ROOT / "data")
-            well = assign_facies(well, load_facies(ROOT / "data"))
-            rp = compute_rock_physics(well)
-            coeffs = fit_dry_rock_trend(rp)
-            adaptive = apply_fluid_substitution(rp, coeffs, K_GAS, RHO_GAS, "gas")
-            default = apply_default_fluid_substitution(rp, K_GAS, RHO_GAS, "gas")
+            result = run_simm_workflow(SimmWorkflowConfig(data_dir=ROOT / "data"))
     except Exception as exc:
         return CheckResult("FAIL", "Rock physics smoke", f"{type(exc).__name__}: {exc}")
 
@@ -146,12 +138,12 @@ def _check_rock_physics_smoke() -> CheckResult:
         "Vp_default_gas",
         "AI_default_gas",
     )
-    merged = adaptive.join(default[["Vp_default_gas", "AI_default_gas"]])
+    merged = result.well
     missing = [column for column in required_columns if column not in merged.columns]
     if missing:
         return CheckResult("FAIL", "Rock physics smoke", "missing columns: " + ", ".join(missing))
 
-    labelled = rp["facies"] != "Background"
+    labelled = merged["facies"] != "Background"
     finite = (
         np.isfinite(merged[["Kd_K0"]]).all().all()
         and np.isfinite(merged.loc[labelled, ["Vp_gas", "AI_gas"]]).all().all()
@@ -163,7 +155,7 @@ def _check_rock_physics_smoke() -> CheckResult:
     return CheckResult(
         "OK",
         "Rock physics smoke",
-        f"rows={len(rp)}, facies_samples={facies_count}, coeffs={coeffs[0]:.3f},{coeffs[1]:.3f},{coeffs[2]:.1f}",
+        f"rows={len(merged)}, facies_samples={facies_count}, coeffs={result.coeffs[0]:.3f},{result.coeffs[1]:.3f},{result.coeffs[2]:.1f}",
     )
 
 
