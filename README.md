@@ -16,6 +16,8 @@ API/config/CLI patterns, not as a replacement for this scientific notebook.
   applying default/Simm substitutions, plotting, and running the workflow.
 - `data/`: well 2 logs and facies interval files.
 - `reference/`: Simm paper and reference notes.
+- `docs/shaley_gassmann_inventory.md`: inventory of the smaller prototype repo
+  and its relationship to this main project.
 - `fig*.png`: generated diagnostic figures from the demo workflow.
 - `scripts/check_inputs.py`: read-only baseline checks for data, figures, and
   importable workflow behavior.
