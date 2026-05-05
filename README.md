@@ -12,8 +12,9 @@ API/config/CLI patterns, not as a replacement for this scientific notebook.
 - `gassmann_demo.ipynb`: narrative notebook following the Simm paper.
 - `notebooks/01_simm_workflow_pipeline.ipynb`: compact notebook using the
   importable pipeline API.
-- `rockphys/`: reusable helpers for loading data, computing rock physics,
-  applying default/Simm substitutions, plotting, and running the workflow.
+- `rockphys/`: reusable helpers for loading data, optional LAS ingestion,
+  computing rock physics, applying default/Simm substitutions, plotting, and
+  running the workflow.
 - `data/`: well 2 logs and facies interval files.
 - `reference/`: Simm paper and reference notes.
 - `docs/shaley_gassmann_inventory.md`: inventory of the smaller prototype repo
@@ -93,6 +94,17 @@ result = run_simm_workflow(config)
 ```
 
 The defaults preserve the current notebook behavior.
+
+For real-data experiments that start from LAS rather than the textbook text
+tables, use the optional LAS adapter without changing the current Simm pipeline:
+
+```python
+from rockphys import compute_rock_physics, load_las_well
+
+well = load_las_well("data/well_2.las")
+well = compute_rock_physics(well)
+well[["depth", "Vp", "Vs", "rho", "GR", "Kd_K0"]].head()
+```
 
 ## Relationship To shaley-gassmann
 

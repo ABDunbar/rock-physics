@@ -10,6 +10,7 @@ from .config import (
     ReservoirProperties,
 )
 from .io import load_well, load_facies, assign_facies
+from .las_io import load_las_well
 from .physics import batzle_wang_oil, vrh, gassmann_inv, gassmann_fwd, poisson, compute_rock_physics
 from .substitution import fit_dry_rock_trend, apply_fluid_substitution, apply_default_fluid_substitution
 from .pipeline import (

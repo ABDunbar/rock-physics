@@ -11,6 +11,7 @@ def test_manifest_captures_demo_data_and_outputs():
     assert "gassmann_demo.py" not in check_inputs.REQUIRED_DATA_FILES
     assert "notebooks/01_simm_workflow_pipeline.ipynb" in check_inputs.REQUIRED_DATA_FILES
     assert "rockphys/config.py" in check_inputs.REQUIRED_DATA_FILES
+    assert "rockphys/las_io.py" in check_inputs.REQUIRED_DATA_FILES
     assert "rockphys/pipeline.py" in check_inputs.REQUIRED_DATA_FILES
     assert "scripts/run_simm_workflow.py" in check_inputs.REQUIRED_DATA_FILES
     assert "data/well_2.txt" in check_inputs.REQUIRED_DATA_FILES
@@ -26,6 +27,7 @@ def test_rock_physics_baseline_checks_pass_without_failures():
     assert failures == []
     assert any(result.name == "Well 2 table" for result in results)
     assert any(result.name == "Rock physics smoke" for result in results)
+    assert any(result.name == "LAS adapter smoke" for result in results)
 
 
 def test_cli_runs_from_repo_root():

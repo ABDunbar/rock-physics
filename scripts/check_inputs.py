@@ -29,6 +29,7 @@ REQUIRED_DATA_FILES = (
     "data/well_2.txt",
     "data/well_2.las",
     "rockphys/config.py",
+    "rockphys/las_io.py",
     "rockphys/pipeline.py",
     "scripts/run_simm_workflow.py",
 )
@@ -161,6 +162,30 @@ def _check_rock_physics_smoke() -> CheckResult:
     )
 
 
+def _check_las_adapter_smoke() -> CheckResult:
+    try:
+        from rockphys import compute_rock_physics, load_las_well
+
+        well = load_las_well(ROOT / "data/well_2.las")
+        result = compute_rock_physics(well)
+    except Exception as exc:
+        return CheckResult("FAIL", "LAS adapter smoke", f"{type(exc).__name__}: {exc}")
+
+    required_columns = ("depth", "Vp", "Vs", "rho", "GR", "Kd_K0")
+    missing = [column for column in required_columns if column not in result.columns]
+    if missing:
+        return CheckResult("FAIL", "LAS adapter smoke", "missing columns: " + ", ".join(missing))
+
+    if len(result) < 4000:
+        return CheckResult("FAIL", "LAS adapter smoke", f"rows={len(result)}, expected >= 4000")
+
+    return CheckResult(
+        "OK",
+        "LAS adapter smoke",
+        f"rows={len(result)}, curves=Vp,Vs,rho,GR, median_vp={result['Vp'].median():.2f} km/s",
+    )
+
+
 def run_checks() -> list[CheckResult]:
     results = [_check_file(path) for path in REQUIRED_DATA_FILES]
     results.extend(_check_file(path) for path in FACIES_FILES)
@@ -176,6 +201,7 @@ def run_checks() -> list[CheckResult]:
             )
         )
     results.append(_check_rock_physics_smoke())
+    results.append(_check_las_adapter_smoke())
     return results
 
 
