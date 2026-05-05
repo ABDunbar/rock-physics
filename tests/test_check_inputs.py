@@ -8,6 +8,7 @@ from scripts import check_inputs
 def test_manifest_captures_demo_data_and_outputs():
     assert "README.md" in check_inputs.REQUIRED_DATA_FILES
     assert "gassmann_demo.ipynb" in check_inputs.REQUIRED_DATA_FILES
+    assert "gassmann_demo.py" not in check_inputs.REQUIRED_DATA_FILES
     assert "notebooks/01_simm_workflow_pipeline.ipynb" in check_inputs.REQUIRED_DATA_FILES
     assert "rockphys/config.py" in check_inputs.REQUIRED_DATA_FILES
     assert "rockphys/pipeline.py" in check_inputs.REQUIRED_DATA_FILES
